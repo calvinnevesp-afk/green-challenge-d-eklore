@@ -1,0 +1,151 @@
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { useAuth } from '@/lib/AuthContext';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { Leaf, Lock, Sparkles, Users } from 'lucide-react';
+import { motion } from 'framer-motion';
+import ChallengeCard from '../components/home/ChallengeCard';
+import SubmitProofDialog from '../components/home/SubmitProofDialog';
+import CountdownTimer from '../components/shared/CountdownTimer';
+
+const HERO_IMAGES = [
+  'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&q=80',
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800&q=80',
+  'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&q=80',
+  'https://images.unsplash.com/photo-1476231682828-37e571bc172f?w=800&q=80',
+];
+
+export default function Home() {
+  const { user } = useAuth();
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const now = new Date();
+  const isAfter13 = now.getHours() >= 13;
+  const heroImg = HERO_IMAGES[new Date().getDay() % HERO_IMAGES.length];
+
+  const { data: challenges = [] } = useQuery({
+    queryKey: ['challenges', today],
+    queryFn: () => base44.entities.Challenge.filter({ scheduled_date: today }),
+  });
+
+  const todayChallenge = challenges[0];
+
+  const { data: myProofs = [] } = useQuery({
+    queryKey: ['myProofs', todayChallenge?.id, user?.email],
+    queryFn: () => base44.entities.Proof.filter({ challenge_id: todayChallenge.id, student_email: user.email }),
+    enabled: !!todayChallenge && !!user,
+  });
+
+  const hasSubmitted = myProofs.length > 0;
+  const proofStatus = myProofs[0]?.status;
+
+  return (
+    <div>
+      {/* Hero */}
+      <div className="relative h-52 overflow-hidden">
+        <img src={heroImg} alt="Nature" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/10 to-background" />
+        <div className="absolute top-0 left-0 right-0 px-5 pt-10 flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                <Leaf className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-white font-extrabold text-lg tracking-tight drop-shadow">Green Challenge</span>
+            </div>
+            <p className="text-white/80 text-xs mt-0.5 ml-10 font-medium">by eklore</p>
+          </div>
+        </div>
+        <div className="absolute bottom-4 left-5">
+          <p className="text-white/90 text-sm font-semibold capitalize drop-shadow">
+            {format(new Date(), 'EEEE d MMMM', { locale: fr })}
+          </p>
+        </div>
+      </div>
+
+      <div className="px-4 pt-4 space-y-4">
+        {/* Stats bar */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid grid-cols-3 gap-2"
+        >
+          {[
+            { label: 'Ton défi', icon: '⚡', value: todayChallenge ? '1 aujourd\'hui' : 'Bientôt' },
+            { label: '1er = ', icon: '🏆', value: '100 pts' },
+            { label: 'Participer', icon: '🌱', value: '40 pts' },
+          ].map(item => (
+            <div key={item.label} className="bg-card border border-border rounded-2xl p-2.5 text-center">
+              <div className="text-xl">{item.icon}</div>
+              <div className="text-xs font-bold mt-0.5">{item.value}</div>
+              <div className="text-[10px] text-muted-foreground">{item.label}</div>
+            </div>
+          ))}
+        </motion.div>
+
+        {/* Challenge Section */}
+        {!isAfter13 && !todayChallenge ? (
+          <CountdownTimer />
+        ) : !isAfter13 && todayChallenge ? (
+          // Challenge exists but not yet 13h — show countdown
+          <CountdownTimer />
+        ) : todayChallenge ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-extrabold">Défi du jour</h2>
+            </div>
+            <ChallengeCard challenge={todayChallenge} />
+
+            {hasSubmitted ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`p-4 rounded-2xl text-center font-semibold text-sm ${
+                  proofStatus === 'validated'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : proofStatus === 'rejected'
+                    ? 'bg-red-50 text-red-700 border border-red-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                }`}
+              >
+                {proofStatus === 'validated'
+                  ? `✅ Preuve validée ! +${myProofs[0]?.points_awarded || 0} pts`
+                  : proofStatus === 'rejected'
+                  ? '❌ Preuve rejetée. Continue à essayer !'
+                  : '⏳ Preuve en attente de validation...'}
+              </motion.div>
+            ) : (
+              <SubmitProofDialog challenge={todayChallenge} user={user} />
+            )}
+
+            {/* Inspiration strip */}
+            <div className="mt-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground">Ils l'ont déjà fait</span>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {[
+                  'https://images.unsplash.com/photo-1544717305-2782549b5136?w=200&q=80',
+                  'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=200&q=80',
+                  'https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?w=200&q=80',
+                  'https://images.unsplash.com/photo-1497366216548-37526070297c?w=200&q=80',
+                ].map((img, i) => (
+                  <img key={i} src={img} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0 opacity-80" />
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center text-center py-16">
+            <div className="text-5xl mb-4">🌿</div>
+            <h2 className="text-xl font-extrabold mb-2">Pas de défi aujourd'hui</h2>
+            <p className="text-muted-foreground text-sm">Reviens demain pour un nouveau défi !</p>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+}
